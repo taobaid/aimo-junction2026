@@ -4,6 +4,11 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sqlite3
+import threading
+from copy import deepcopy
+from functools import lru_cache
+from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -54,6 +59,78 @@ def iter_catalogue(path):
                 buffer=buffer[1:];whitespace()
         whitespace()
         if buffer:raise ValueError('Unexpected data after catalogue array.')
+
+
+class DiskFields(Mapping):
+    def __init__(self,product,names):self.product=product;self.names=names
+    def __getitem__(self,key):
+        if key=='names':return self.names
+        return self.product.body().get('synkkaData',{})[key]
+    def __iter__(self):return iter(self.product.body().get('synkkaData',{}))
+    def __len__(self):return len(self.product.body().get('synkkaData',{}))
+    def __deepcopy__(self,memo):return deepcopy(self.product.body().get('synkkaData',{}),memo)
+
+
+class DiskProduct(Mapping):
+    """Small product reference; large original fields stay on disk."""
+    def __init__(self,catalogue,row):
+        self.catalogue=catalogue;self.number=row[0]
+        self.fields=json.loads(row[1])
+        self.names=json.loads(row[2])
+    def body(self):return self.catalogue.load(self.number)
+    def __getitem__(self,key):
+        if key in self.fields:return self.fields[key]
+        if key=='synkkaData' and self.names is not None:return DiskFields(self,self.names)
+        return self.body()[key]
+    def __iter__(self):return iter(self.body())
+    def __len__(self):return len(self.body())
+    def __deepcopy__(self,memo):return deepcopy(self.body(),memo)
+
+
+class DiskCatalogue:
+    """List-compatible iteration/indexing without retaining full products."""
+    def __init__(self,source):
+        self.path=Path(str(source)+'.index.sqlite3')
+        temporary=Path(str(self.path)+'.building')
+        temporary.unlink(missing_ok=True)
+        connection=sqlite3.connect(temporary)
+        try:
+            connection.execute('PRAGMA cache_size=-2048')
+            connection.execute('CREATE TABLE products (number INTEGER PRIMARY KEY, fields TEXT, names TEXT, body TEXT)')
+            count=0
+            for count,product in enumerate(iter_catalogue(source),1):
+                # Small, frequently searched fields avoid reading heavy bodies.
+                fields={k:product[k] for k in ('id','deleted','countryOfOrigin','salesUnit','baseUnit','allowedLotSize') if k in product}
+                names=product.get('synkkaData',{}).get('names',[]) if isinstance(product.get('synkkaData'),dict) else None
+                connection.execute('INSERT INTO products VALUES (?,?,?,?)',(count-1,json.dumps(fields,ensure_ascii=False),json.dumps(names,ensure_ascii=False),json.dumps(product,ensure_ascii=False)))
+                if count%500==0:connection.commit()
+            if not count:raise ValueError('Catalogue is empty.')
+            connection.commit()
+        except BaseException:
+            connection.close();temporary.unlink(missing_ok=True);raise
+        connection.close();temporary.replace(self.path)
+        self.count=count;self.local=threading.local()
+        self.load=lru_cache(maxsize=32)(self._load)
+    def connection(self):
+        if not hasattr(self.local,'connection'):
+            self.local.connection=sqlite3.connect(self.path)
+            self.local.connection.execute('PRAGMA cache_size=-2048')
+            self.local.connection.execute('PRAGMA query_only=ON')
+        return self.local.connection
+    def _load(self,number):
+        return json.loads(self.connection().execute('SELECT body FROM products WHERE number=?',(number,)).fetchone()[0])
+    def __len__(self):return self.count
+    def __iter__(self):
+        cursor=self.connection().execute('SELECT number,fields,names FROM products ORDER BY number')
+        try:
+            for row in cursor:yield DiskProduct(self,row)
+        finally:cursor.close()
+    def __getitem__(self,index):
+        if isinstance(index,slice):return [self[i] for i in range(*index.indices(self.count))]
+        if index<0:index+=self.count
+        row=self.connection().execute('SELECT number,fields,names FROM products WHERE number=?',(index,)).fetchone()
+        if row is None:raise IndexError(index)
+        return DiskProduct(self,row)
 
 
 def download_catalogue(url,target,expected_sha=''):
@@ -108,8 +185,9 @@ def create_hosted_app():
     # Populate the existing application's cache without its read_text/json.loads
     # full-file allocation. Endpoints continue using the same complete products.
     if getattr(g,'_catalogue_cache',None) is None:
-        print('Loading complete catalogue with bounded input buffering...',flush=True)
-        g._catalogue_cache=list(iter_catalogue(catalogue))
+        print('Indexing complete catalogue on disk (low-memory mode)...',flush=True)
+        g._catalogue_cache=DiskCatalogue(catalogue)
+        print('Catalogue ready: '+str(len(g._catalogue_cache))+' products; complete records remain on disk.',flush=True)
     if not g.catalogue():raise RuntimeError('Live catalogue is empty.')
     g.app.state.offline_demo=False
     return g.app
