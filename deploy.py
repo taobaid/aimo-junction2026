@@ -16,6 +16,46 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):return None
 
 
+def iter_catalogue(path):
+    """Decode an array one product at a time, without a full-file text copy."""
+    decoder=json.JSONDecoder()
+    with Path(path).open('r',encoding='utf-8-sig') as source:
+        buffer='';done=False
+        def fill():
+            nonlocal buffer,done
+            chunk=source.read(65536)
+            if chunk:buffer+=chunk
+            else:done=True
+        def whitespace():
+            nonlocal buffer
+            while True:
+                buffer=buffer.lstrip()
+                if buffer or done:return
+                fill()
+        whitespace()
+        if not buffer.startswith('['):raise ValueError('Catalogue must be a JSON array.')
+        buffer=buffer[1:];whitespace()
+        if buffer.startswith(']'):
+            buffer=buffer[1:]
+        else:
+            while True:
+                while True:
+                    try:item,end=decoder.raw_decode(buffer);break
+                    except json.JSONDecodeError:
+                        if done:raise ValueError('Invalid or truncated catalogue JSON.') from None
+                        fill()
+                if not isinstance(item,dict):raise ValueError('Catalogue products must be JSON objects.')
+                buffer=buffer[end:]
+                yield item
+                whitespace()
+                if buffer.startswith(']'):
+                    buffer=buffer[1:];break
+                if not buffer.startswith(','):raise ValueError('Invalid catalogue array separator.')
+                buffer=buffer[1:];whitespace()
+        whitespace()
+        if buffer:raise ValueError('Unexpected data after catalogue array.')
+
+
 def download_catalogue(url,target,expected_sha=''):
     """Owner-configured private HTTPS object, never a model/user supplied URL."""
     parsed=urlsplit(url)
@@ -32,8 +72,8 @@ def download_catalogue(url,target,expected_sha=''):
                     if size>300*1024*1024:raise ValueError('Catalogue download exceeds the 300 MB startup limit.')
                     digest.update(chunk);f.write(chunk)
         if expected_sha and digest.hexdigest()!=expected_sha.lower():raise ValueError('Catalogue checksum does not match AIMO_CATALOG_SHA256.')
-        data=json.loads(temp.read_text(encoding='utf-8-sig'))
-        if not isinstance(data,list) or not data:raise ValueError('Catalogue download must be a nonempty JSON product array.')
+        count=sum(1 for _ in iter_catalogue(temp))
+        if not count:raise ValueError('Catalogue download must be a nonempty JSON product array.')
         temp.replace(target)
     except (HTTPError,URLError,OSError,ValueError) as exc:
         # Never echo signed URLs, provider bodies or credentials to public logs.
@@ -65,7 +105,11 @@ def create_hosted_app():
     os.environ.setdefault('RECIPE_PROVIDER','anthropic')
     os.environ.setdefault('AIMO_DB','/tmp/trusted-trade-purchases.sqlite3')
     import aimo_api as g
-    g.catalogue() # Fail before accepting visitors if the file cannot be loaded.
+    # Populate the existing application's cache without its read_text/json.loads
+    # full-file allocation. Endpoints continue using the same complete products.
+    if getattr(g,'_catalogue_cache',None) is None:
+        print('Loading complete catalogue with bounded input buffering...',flush=True)
+        g._catalogue_cache=list(iter_catalogue(catalogue))
     if not g.catalogue():raise RuntimeError('Live catalogue is empty.')
     g.app.state.offline_demo=False
     return g.app
