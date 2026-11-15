@@ -4,6 +4,7 @@ from datetime import date
 import os
 import sys
 import httpx
+from urllib.parse import urlsplit
 import json
 
 def main():
@@ -24,7 +25,8 @@ def main():
     token = os.environ.get("AIMO_AGENT_TOKEN", "").strip()
     if not token:
         sys.exit("Set AIMO_AGENT_TOKEN to the local agent token printed by the server.")
-    with httpx.Client(base_url=args.url, headers={"Authorization": f"Bearer {token}"}, timeout=180) as client:
+    with httpx.Client(base_url=args.url, headers={"Authorization": f"Bearer {token}"}, timeout=180,
+                          trust_env=urlsplit(args.url).hostname not in {"localhost","127.0.0.1","::1"}) as client:
         if args.commit_proposal:
             receipt = client.post("/orders", json={"proposal_id": args.commit_proposal})
             receipt.raise_for_status()

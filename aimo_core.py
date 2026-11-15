@@ -18,6 +18,7 @@ no order submission or production webshop interaction is needed.
 """
 
 import argparse
+import planning_budget
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 from fractions import Fraction
@@ -99,13 +100,15 @@ def api_post(endpoint, payload, api_key):
                  "Accept": "application/json", "User-Agent": "AimoChallengeDemo/1.0"},
         method="POST",
     )
-    with _API_LOCK:
+    with planning_budget.lock(_API_LOCK):
+        planning_budget.check("supplier queue")
         for attempt in range(3):
             while _API_NEXT_REQUEST > time.monotonic():
+                planning_budget.check("supplier cooldown")
                 time.sleep(max(0.0, min(1.0, _API_NEXT_REQUEST - time.monotonic())))
             _API_NEXT_REQUEST = time.monotonic() + 1.0
             try:
-                with build_opener(NoRedirect()).open(request, timeout=30) as response:
+                with build_opener(NoRedirect()).open(request, timeout=planning_budget.timeout(30)) as response:
                     result = json.load(response, parse_float=Decimal)
                 break
             except HTTPError as exc:

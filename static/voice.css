@@ -1,0 +1,85 @@
+
+    #voice-dialog .voice-body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 480px;
+      padding: 24px; border-radius: 12px;
+    }
+    #voice-dialog h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+    #voice-dialog p.subtitle { color: #94a3b8; margin-bottom: 2rem; }
+    .stage {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .orb {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #38bdf8, #0284c7);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+      z-index: 2;
+    }
+    .orb.speaking {
+      transform: scale(1.15);
+      box-shadow: 0 0 50px rgba(56, 189, 248, 0.9);
+      background: radial-gradient(circle at 30% 30%, #4ade80, #16a34a);
+    }
+    .orb.thinking {
+      animation: pulse 1s infinite alternate;
+      background: radial-gradient(circle at 30% 30%, #facc15, #ca8a04);
+      box-shadow: 0 0 45px rgba(250, 204, 21, 0.8);
+    }
+    .food-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      animation: spin 18s linear infinite;
+    }
+    .food-ring.fast {
+      animation: spin 3s linear infinite;
+    }
+    .food-item {
+      position: absolute;
+      font-size: 2rem;
+      user-select: none;
+    }
+    .f1 { top: 0; left: 50%; transform: translateX(-50%); }
+    .f2 { bottom: 0; left: 50%; transform: translateX(-50%); }
+    .f3 { left: 0; top: 50%; transform: translateY(-50%); }
+    .f4 { right: 0; top: 50%; transform: translateY(-50%); }
+    .f5 { top: 15%; left: 15%; }
+    .f6 { bottom: 15%; right: 15%; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
+    .controls { margin-top: 2.5rem; display: flex; gap: 1rem; }
+    #voice-dialog button {
+      padding: 0.8rem 1.8rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 9999px;
+      cursor: pointer;
+    }
+    #startBtn { background: #38bdf8; color: #0f172a; }
+    #stopBtn { background: #ef4444; color: white; display: none; }
+    #status { margin-top: 1.2rem; font-size: 0.95rem; color: #cbd5e1; }
+  
+#voice-dialog{max-width:680px;width:calc(100% - 32px);padding:16px}#voice-dialog .voice-body{text-align:center}#voice-dialog .subtitle{margin-bottom:8px}#voice-dialog .stage{width:220px;height:220px}#voice-dialog #status{max-width:480px;line-height:1.5}#voice-caption{max-width:480px;min-height:28px;color:#cbd5e1}#voice-dialog button:disabled{opacity:.5;cursor:wait}@media(prefers-reduced-motion:reduce){#voice-dialog *{animation:none!important;transition:none!important}}
+
+#voice-dialog .field-help{color:#cbd5e1;font-size:13px;line-height:1.5;max-width:490px}

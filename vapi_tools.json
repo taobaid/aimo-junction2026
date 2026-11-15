@@ -1,0 +1,95 @@
+[
+  {
+    "type": "function",
+    "async": false,
+    "function": {
+      "name": "create_recipe_plan",
+      "description": "Start a review-only meal basket. Ask for portions and an explicit delivery date first. Returns a job ID immediately; nothing is ordered.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "Meal/dish request"
+          },
+          "portions": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "delivery_date": {
+            "type": "string",
+            "description": "Confirmed delivery date YYYY-MM-DD"
+          },
+          "preferences": {
+            "type": "string",
+            "description": "Dietary and recipe preferences; empty string if none"
+          },
+          "recipe_url": {
+            "type": "string",
+            "description": "Optional exact public recipe URL supplied by the buyer; do not invent one."
+          },
+          "recipe_text": {
+            "type": "string",
+            "description": "Optional full recipe text supplied by the buyer, including original servings. Do not invent a recipe."
+          },
+          "planning_mode": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "published"
+            ],
+            "description": "quick (default) proposes an AI recipe draft for on-screen review. published researches a real recipe and can be slower. A buyer recipe link or text takes priority."
+          }
+        },
+        "required": [
+          "request",
+          "portions",
+          "delivery_date"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "async": false,
+    "function": {
+      "name": "get_recipe_plan_status",
+      "description": "Check a meal job from this same voice call. PLANNING means still working. READY means show the saved basket for on-screen review, not that it is ordered.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "async": false,
+    "function": {
+      "name": "search_products",
+      "description": "Search the static catalogue. Does not confirm price, stock or place orders.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

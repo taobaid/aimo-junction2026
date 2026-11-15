@@ -1,5 +1,631 @@
 # Trusted Trade Agents — local purchasing API
 
+## v0.15: continue with available items for any dish
+
+A blocked saved meal with checked products now offers **Continue with available
+items**, regardless of dish or ingredient type. This creates a fresh partial
+basket, explicitly lists excluded ingredients and shows its tax-inclusive total.
+**Yes, confirm partial basket** requires reviewer access and records a mock
+receipt with `fulfillment_scope=SELECTED_ITEMS_ONLY` and
+`complete_recipe_basket=false`. It never claims that the full recipe is supplied.
+
+The action reuses the saved recipe and selected products. It makes no Claude
+research or matching calls, and only rechecks prices/availability. Existing quick
+planning, source caching, background jobs and time budgets remain in place.
+
+After updating, restarting and Ctrl+F5, open the existing blocked lasagna plan in
+Purchases (or Recent meal plans). No need to generate the recipe again. This works
+only when at least one checked product can be purchased; empty purchases remain
+blocked. Included products must still pass price, stock, quantity, dietary/origin
+and delivery validation. See PARTIAL_PURCHASES.md. 184 offline tests pass.
+
+
+## Start here: repeatable laptop demo (v0.14)
+
+Install Python 3.11+, extract the ZIP and run **start_demo.cmd** on Windows or
+`sh start_demo.sh` on macOS/Linux. Open http://127.0.0.1:8000 and paste the
+reviewer token printed in the terminal. No API keys or official catalogue needed.
+The first dependency install needs internet. Sample mode uses three fixed dishes
+and synthetic offers through the actual gateway and resets each restart.
+
+For live Claude and the Aimo mock APIs, use **run_live.py** with your own keys and
+official catalogue. **LAPTOP_SETUP.md** covers both modes. **SUBMISSION_GUIDE.md**
+maps the project submission fields and provides a short recording plan.
+
+173 offline tests pass. CHALLENGE_COVERAGE.md now describes current capabilities
+and limits without the older single-product-only statements.
+
+
+## v0.13: faster general dish planning
+
+The dashboard and voice now default to **Quick plan**: Claude proposes a complete
+metric recipe draft without web-search/fetch or repeated whole-recipe research.
+Every generated recipe is clearly labelled and requires reviewer confirmation.
+Choose **Research a published recipe** or supply your own recipe URL/text when
+that evidence is required. Prices, stock, claims and purchasing authority still
+come from the existing deterministic gateway checks.
+
+Typed planning runs as an authenticated, idempotent background job. Reopening the
+meal planner after a page refresh resumes its saved job. A default 180-second
+planning budget limits provider timeouts and further recovery work; checked
+partial baskets are retained when a later stage runs out of time. This is a
+cooperative budget, not a guaranteed wall-clock completion deadline.
+
+See **FAST_PLANNING.md** for mode choices, configuration and verification.
+
+
+## v0.12: kitchen purchasing workspace
+
+A new unified workspace brings meal planning, product comparison and voice requests
+into one dashboard. Use the searchable purchase queue to review baskets, resolve
+changes and find mock receipts. The permissions view explains the configured
+spending authority and lets you choose the control level for the next meal.
+
+Basket items, quantities, availability and tax-inclusive subtotals are visible
+before confirmation. Source evidence, editable recipe quantities and the audit
+trail sit under a disclosure panel. Recipe changes have clear Yes/No actions and
+targeted substitute/omission recovery. A live elapsed timer and duplicate-submit
+protection keep long recipe requests understandable.
+
+See **UI_DEMO_GUIDE.md** for a quick installation and judging walkthrough.
+The API, approval rules and mock-only order boundary are preserved.
+
+
+## v0.11: practical choices for missing seasonings
+
+A missing Worcestershire sauce now becomes a proposed omission before expensive
+alternative matching, substitution calls or another whole-recipe search. The
+existing recipe stays intact with that proposed change and the buyer gets
+“Order without Worcestershire sauce?” plus Yes/No and “Find substitutes instead”.
+Recognised nonessential flavour additions include cooking wine (in supported
+sauces/stews), Worcestershire, dried oregano/basil, ground black pepper, paprika
+and Italian herb seasoning. Ingredients explicitly named in the request/preferences,
+“no omissions”/“exact recipe” requests, defining dish flavours and staple ingredients
+are not silently dropped. All changes still need buyer review.
+
+### Use the basket that already finished
+
+After replacing code, restarting and hard-refreshing, open **Plan a meal → Recent
+meal plans → the existing blocked plan**. It now offers **Continue without
+Worcestershire sauce** if that missing seasoning is eligible. This action uses
+the saved recipe, performs fresh price/stock checks and shows a new basket for
+final Yes/No. It does NOT call Claude or repeat recipe research. Keep your database
+when upgrading or the old plan will not be available.
+
+**Find substitutes instead** uses only the saved recipe and its unresolved/omitted
+ingredients. It does product/substitute matching without starting another recipe
+search. A proposed substitute still must pass quantity, claims, price, stock,
+delivery and whole-basket checks; the resulting basket is reviewed again. A failed
+substitution can return to the omission choice. Unknown amounts for staple foods
+still block; a complete ingredient list remains required.
+
+For new requests, practical handling is the default. The API option
+`recovery_mode="substitutes"` explicitly requests substitute-first handling instead
+of quick seasoning omissions. The source-record key distinguishes these modes.
+Unknown quantities for eligible omitted seasonings no longer trigger repeated
+recipe-source searches. In-request omission checks reuse the current observation
+batch; final confirmation always performs fresh validation. Terminal logs now
+show safe recipe stage starts/completions without keys or source text.
+
+### Timing and verification
+
+This fixes the wasteful exception path; it is not a promise of a universal
+maximum runtime. First-time Claude web research, model matching and mock supplier
+rate limits can still take time. Previously successful sources are reused under
+the existing policy. The saved-plan omission action needs no model calls and
+substitute lookup does not research the entire meal again.
+
+151 offline tests pass, including immediate missing-Worcestershire proposals,
+conversion of a saved blocked plan without additional model calls, substitute
+selection from saved evidence, mandatory ingredients, exact-basket fingerprints,
+declined plans and fresh stock failures. Browser QA verified a saved blocked
+plan → omission review → substitute review → mock receipt using fixtures, not
+paid live Claude/supplier calls. Keep all working environment/Vapi settings.
+No production orders are sent.
+
+
+## v0.10: consistent terminal, UI and voice recipe selection
+
+Previously each request independently researched and extracted a recipe. A
+successful local dish check did not establish a reusable recipe for the UI.
+Different sources/extractions could produce different amounts or new unknowns.
+The local diagnostic also defaults to kitchen estimates, while the UI and voice
+respect their selected/enabled measurement policies.
+
+Successful source recipes are now shared for 24 hours in the same AIMO_DB used
+by the gateway, keyed by normalized dish request (ignoring a trailing “for 200
+people”), portions, preferences, buyer, measurement policy, mandatory claims/
+origin, provider/model and API endpoint. No API key is included in the key/payload.
+A successful dish_check run seeds this recipe record; a later matching UI/voice
+request uses the same source facts. Every product match, price, availability,
+quantity, approval and final order validation still runs afresh. A source-cache
+record is not a stock reservation, approved basket or guaranteed order.
+
+The UI says “Using the same successful recipe” for a reuse. In “Use your own
+recipe”, select “Find a new recipe” to bypass it. The CLI has --fresh. Set
+AIMO_RECIPE_CACHE=0 to disable reuse. Explicit URLs and pasted recipes do not
+use another request's cached recipe. Failed baskets never seed the successful
+recipe store. Corrupt or expired records are ignored. Alternative recipe variants
+retain their review requirement after reuse.
+
+Source parsing now accepts explicit decorated metric amounts such as “400 g
+dried spaghetti” and checked per-serving expressions such as “200 g per person
+× 8”. The latter is converted to the original yield before target scaling, so
+it is never multiplied twice. Conflicting counts and unknown measures stay
+unresolved. Exact metric handling works in both strict and kitchen modes.
+
+### Upgrade and verify the same recipe through the UI
+
+Keep catalogue, database and all working environment settings. Replace code,
+restart the server, hard-refresh the browser and create a new request. After
+upgrading, run the successful local command once to seed the recipe record:
+
+```powershell
+python dish_check.py --dish "Spaghetti bolognese" --portions 200 --date 2026-11-18 --run
+```
+
+Use the SAME project folder/AIMO_DB, provider/model, preferences and kitchen
+measurement policy as the gateway. Voice kitchen estimates require the existing
+server setting AIMO_RECIPE_MEASUREMENTS=kitchen. The diagnostic uses paid API
+calls but creates no order or saved proposal; it now stores successful source
+facts only. It reports measurement_mode and recipe_reused in its JSON. New runs
+can still fail if current supplier offers cannot meet the requirements.
+
+Then enter “Spaghetti bolognese for 200 people”, the same date and preferences
+in the UI, with Kitchen planning selected. The result should show recipe reuse.
+If it does not, compare AIMO_DB/project folder, model/provider, preferences,
+measurement mode and the running version before making another paid request.
+Old saved blocked plans keep their old snapshot; open a new plan instead.
+
+143 offline tests pass, including local source_meal success followed by an actual
+UI API request without a second recipe search, fresh-stock failure after reuse,
+policy/buyer/model isolation, expiration/tamper rejection, metric decoration and
+per-person scaling. Existing native Claude request-contract and dish-ordering
+tests still pass. This update was not run against the user's live credentials.
+
+
+## v0.9: whole-dish sourcing and Claude regression coverage
+
+The planner now chooses product assignments against combined SKU stock rather
+than picking the cheapest product independently for every ingredient. A bounded
+4096-step search seeks a feasible assignment; unresolved rows remain blockers
+and enter normal alternative-offer/substitution recovery. Fresh confirmation
+still checks only the exact approved SKUs and quantities.
+
+Garlic measures such as “4 cloves of fresh garlic, peeled and finely chopped”
+now use the existing opt-in kitchen clove profile. No quantity is invented if the
+source contains no count; strict mode still refuses estimated weights.
+
+Semantic matching can return up to 12 compatible offers per ingredient. Recovery
+considers unselected existing candidates plus up to 40 genuinely new candidates,
+instead of repeatedly retrieving the same initial products. A substitution cannot
+fix its own line by breaking a previously matched ingredient’s stock allocation.
+
+If a complete web-selected recipe cannot be sourced, at most TWO additional
+published recipes for the requested dish are considered. Only an entire eligible
+basket can replace the original. The recipe change is recorded with both source
+URLs and requires whole-basket Yes/No even in automatic mode. Exact URL selections
+and buyer-pasted recipes are never replaced this way. Research/source failures
+retain the original assessment. The original selector still tries up to three
+sources for quantity completeness, so total research is bounded at five attempts.
+
+134 offline tests pass, including the native Claude HTTP adapter through source
+extraction, garlic conversion, expired beef exclusion, conflicting shared stock,
+source-variant fallback and fresh stock failure during final confirmation. Other
+dish smoke fixtures cover salmon soup, dal, vegetable curry, tofu and apple crumble.
+These are synthetic fixtures, not live recipe/supplier coverage. No live Claude
+credential/catalogue was available in this environment.
+
+### Test your live environment without creating an order
+
+Keep your existing Aimo, catalogue and Claude settings in the terminal. Run:
+
+```powershell
+$env:RECIPE_PROVIDER = "anthropic"
+python dish_check.py --dish "Spaghetti bolognese" --portions 200 --date 2026-11-18 --run
+```
+
+This uses Claude API credit and mock supplier requests. It prints the selected
+recipe/source, converted amounts, chosen products and exact blockers; it creates
+NO saved proposal or order. Use a currently eligible delivery date. Exit code 0
+means ready for review, 2 means a genuine incomplete basket, 1 means model/config
+failure. Without --run, it only explains what would be checked. Kitchen estimates
+are the explicit default for this diagnostic; --strict disables them.
+
+### Upgrade
+
+Replace code, retain catalogue/database/environment settings, restart and create
+an entirely NEW plan. Old plans keep their original evidence. Keep your working
+VAPI_PUBLIC_KEY, VAPI_ASSISTANT_ID and VAPI_WEBHOOK_SECRET. For voice kitchen
+estimates the server must have AIMO_RECIPE_MEASUREMENTS=kitchen. Normal UI users
+can select Kitchen planning in Quantity settings. All receipts remain mock only.
+Cut-offs, unknown/empty stock, mandatory claims and delivery dates are not waived;
+no code can guarantee a basket if all valid offers are actually unavailable.
+
+
+## v0.8.4: fix Claude schema compatibility
+
+The 80-ingredient Pydantic bound introduced maxItems into the structured-output
+schema. Claude does not support this keyword. The native Claude adapter now
+removes unsupported wire constraints and keeps them as descriptions, while
+Pydantic continues to enforce all bounds on returned data. Actual property
+names and required fields are preserved. HTTP 400 diagnostics identify the
+failed stage, and deterministic bad requests are not automatically retried.
+128 offline tests pass, including a mock provider rejecting maxItems and local
+rejection of 81 ingredients. No live Claude key was available for verification.
+Restart and start a NEW meal request; retain all working settings.
+Reference: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+
+
+## v0.8.3: reveal redacted recipe failures in voice jobs
+
+Recipe HTTP 502/503 failures now display the gateway’s specific diagnostic
+(e.g. Claude timeout, provider rate limit, source extraction failure). Raw
+provider bodies and unknown errors are not forwarded, and configured key/token/
+secret values are redacted. This exposes the cause; it does not establish that
+an unknown live upstream failure is fixed. Restart and create a NEW request;
+existing failed jobs retain their saved generic message. 125 offline tests pass.
+Run `python claude_check.py --search` in the server environment to diagnose
+live Claude API, web-search/fetch and extraction access. Keep all working settings.
+
+
+## v0.8.2: validate voice dates before announcing planning
+
+Past delivery dates are rejected immediately in the create_recipe_plan tool
+response, before any job or model work begins. The error tells the assistant
+to ask for the correct future date and year. The caller can correct it within
+the same call. No year is silently changed. New web calls fetch the server date
+and pass it as current_date/current_year variables, plus a date-grounded opening
+message. The saved assistant/provider/tools remain unchanged. 123 offline tests
+pass. Restart, hard-refresh and begin a NEW call; existing jobs/calls do not change.
+Keep all working keys, tokens, Vapi identifiers and webhook secret.
+
+
+## v0.8.1: explain voice validation failures
+
+Voice jobs now show the requested delivery date and server date when a delivery
+date is in the past. Other HTTP 422 validation errors identify allowed field
+names without exposing private upstream details. Start a NEW voice request
+after upgrading; old failed jobs retain their saved message. 121 offline tests
+pass from the packaged ZIP. Keep all working environment settings.
+
+
+## v0.8: robust recipe selection
+
+Request any dish, select an exact public recipe URL, or paste your own full
+recipe with its original serving yield. Up to three bounded source attempts
+preserve the best candidate. Recipes may contain up to 80 ingredients; matching
+is batched. See **RECIPE_SELECTION.md** for behavior, examples and limits.
+Keep your working catalogue, database and Aimo/Claude/Vapi environment settings.
+Restart the gateway, hard-refresh the browser and create a new meal plan.
+
+
+## v0.7: voice requests integrated
+
+Choose **Speak your request** in the signed-in dashboard. The supplied Vapi
+bridge now runs inside the existing server; the supplied animated orb is part
+of the UI. Voice builds review-only meal baskets in background jobs and opens
+the existing Yes/No review screen. See **VOICE_SETUP.md** for the required Vapi
+webhook settings and **vapi_tools.json** for tool parameter schemas. No separate
+bridge process is needed. Keep catalogue, database and environment settings
+when replacing code. Restart the server after upgrading.
+
+
+## v0.6.1: leave out unavailable cooking wine
+
+An unavailable red/white cooking wine in bolognese, ragu, stew or tomato sauce
+now becomes an explicit “Order without red wine?” proposal after checking
+additional same-ingredient offers. It does not need a catalogue replacement.
+Yes accepts the recipe change and revalidates the remaining basket; No cancels.
+The omission is saved in the basket fingerprint and mock-order receipt.
+Explicit wine preferences are not waived. Main ingredients and unresolved
+quantities are not automatically dropped. This rule is deliberately limited
+to cooking wine in the named dishes, rather than treating every ingredient as optional.
+
+The result screen hides the request form, technical status codes and quantity
+editors. It shows the meal, portions, date, revised total, changes and two clear
+buttons. Quantity settings and ingredient evidence are collapsed; “Plan another
+meal” returns to the form. Create a NEW plan after upgrading (old plans retain
+their original snapshot). Keep your catalogue, database and environment settings.
+
+Verified: 101 offline tests from the packaged ZIP, JavaScript syntax validation,
+and browser confirmation of a wine-free basket using synthetic model/supplier
+responses. Live Claude/supplier recovery requires your server credentials.
+All order records remain mock-only; no supplier orders are sent.
+
+
+## v0.6: automatic exception resolution, then Yes/No
+
+The main meal result is now a short decision summary. The agent attempts to
+resolve sourcing issues before asking you to decide, rather than sending you
+straight to ingredient editors. Create a NEW meal plan after upgrading.
+
+Recovery is enabled by default (resolve_exceptions=true):
+
+1. Evaluate the original ingredient matches with fixed supplier prices and
+   availability. If they fail, search up to 40 additional candidates for those
+   same ingredients and validate the model's catalogue-only matches.
+2. For remaining shortages with a known KG/L quantity basis, ask the model for
+   up to three recipe-compatible replacement options per ingredient, at most
+   15 options overall. Each option can contain 1–3 required replacement parts.
+   Quantities are explicit same-dimension ratios between 0.001 and 5. The agent
+   does not invent a quantity when the original requirement is unknown.
+3. Search the actual catalogue for those replacements, match their identity and
+   preparation form, and validate quantities, mandatory product claims/origin,
+   prices, stock, delivery dates and cut-offs. Shared-SKU stock is checked for
+   the combined basket. Every component of a replacement blend must qualify.
+4. Plain cooking/tap water can be proposed as an on-site supply instead of a
+   bottled-water purchase. It remains a required ingredient: your Yes confirms
+   the kitchen can provide it. This rule never includes water chestnuts,
+   flavoured water, bottled/mineral/sparkling water or arbitrary pantry goods.
+5. If a valid complete basket is found, show what changed, quantities, caveats
+   and the combined subtotal, followed by **Is this okay?**
+   **Yes — approve & mock-order** accepts this exact revised basket and commits
+   a local mock receipt after fresh supplier validation. **No — don’t order**
+   saves REJECTED and cannot later be overridden by Yes for that same plan.
+
+Any alternate-offer recovery, ingredient substitution or kitchen-water proposal
+requires one reviewer Yes/No, including requests in automatic mode and baskets
+within the automatic limit. An agent token cannot approve its own substitutions.
+Unchanged fully eligible baskets can still follow previously granted authority.
+Accepted changes and assumptions are retained in the fingerprint and mock receipt.
+
+Original recipe evidence, ingredient details, optional quantity editors and the
+recovery trace remain available under **Recipe, ingredients and decision evidence**.
+Garlic parsing also accepts heads/bulbs (a labelled 24 g reference estimate), size
+words on cloves, trailing preparation and source-supplied metric equivalents.
+
+The model must preserve the requested dish and preferences, and describe flavour
+or potential new-allergen differences. These are proposed recipe adaptations,
+not independently certified allergen safety or nutritional equivalence. Buyer
+mandatory claim/origin rules are still checked against each selected product;
+price, availability, cut-offs and unknown quantities cannot be waived by Yes.
+The recovery is a bounded attempt, not a guarantee that every synthetic stock
+scenario can be fulfilled. If none of the checked options forms a valid whole
+basket, no partial order is committed and the result says it cannot complete it.
+A failure of optional recovery retains the last assessed basket, without falsely
+accepting an unvalidated substitute. No supplier order is ever submitted.
+
+API additions: RecipeRequest.resolve_exceptions defaults to true; RecipePlanView
+includes changes and resolution_attempts; POST /recipe-plans/{id}/decline is
+reviewer-only and requires the exact saved fingerprint. Set resolve_exceptions=false
+in an API request to retain the original recipe without automatic recovery.
+
+Upgrade: stop the server, replace code from this ZIP, keep the product catalogue
+and SQLite database, restart with the existing Claude/Valio environment settings,
+then create a new meal plan. No new Python dependencies are required.
+98 offline tests pass, including the stock-out → substitutes → Yes/No flow,
+No/idempotency, fresh stock changes, hard claims and aggregate stock for blends.
+The browser flow was verified with synthetic model/catalogue/supplier fixtures.
+Live model substitutions against your actual mock data remain to be verified
+with your private key. Recovery adds model and supplier calls, so it can take
+longer and uses additional model credits; supplier 429 handling is unchanged.
+
+
+## v0.5: fewer manual ingredient decisions
+
+The recipe agent now normalises ordinary recipe measures before catalogue
+matching. In **Plan a meal**, select **Kitchen planning: allow the listed
+ingredient estimates** (the reviewer UI default), choose your control mode,
+and create a NEW meal plan. Resolved quantities no longer require a separate
+manual ingredient entry. Optional quantity editors start collapsed.
+
+- Exact units: metric weights/volumes, pounds, weight ounces, fractions and
+  measured multipacks such as `12 cans x 29 oz each`. Weight ounces are never
+  treated as fluid ounces. For a 100-serving source scaled to 200, these cans
+  require 19.731268095 kg of sauce, before sales-pack rounding.
+- Kitchen estimates: named profiles for fresh chopped/diced onion, raw garlic
+  cloves, minced garlic, table salt, granulated sugar, dried basil/oregano leaves,
+  tomato paste and vegetable oil. Quantities are marked with an approximate sign,
+  with the factor and reference link beside each ingredient. Profiles assume
+  US household proportions and edible food quantities; packing, preparation,
+  peeling loss and actual product density can differ.
+- An Italian dry-herb blend has only a clearly labelled **demo proxy** of 1 g/tsp,
+  not an independently verified supplier density. It always requires one
+  whole-basket reviewer decision, even if all costs are within authority.
+- Precise mode still performs exact weight conversions but does not use these
+  kitchen estimates. Unsupported ingredients, missing can sizes, ambiguous
+  measures and “to taste” stay unresolved. No ingredients are silently omitted.
+- If required quantities cannot be resolved under the selected policy, the
+  agent researches one alternative recipe and keeps the complete source with
+  better resolvable-quantity coverage. It never merges two recipes or drops
+  troublesome ingredients. Informational notes no longer force spending review;
+  substantive review_reasons, uncertain matches and user preferences still do.
+- Catalogue search now runs for unresolved required ingredients too, so an
+  unknown quantity no longer produces the misleading impression that the
+  ingredient was never available in the catalogue. Pricing waits for a quantity.
+
+Buyer authority is enforced server-side. A reviewer can opt into Kitchen planning
+for a request. An external agent cannot enable it for itself; the buyer must set:
+
+```powershell
+$env:AIMO_RECIPE_MEASUREMENTS = "kitchen"
+```
+
+For autonomous mock commitment, the existing AIMO_RECIPE_AUTONOMY=automatic
+setting is also required for an agent. Normal budget, stock, cutoff, product
+claims/origin and fingerprint checks still apply. Revoking kitchen authority
+blocks agent commitment of an existing estimate-based plan pending reviewer
+approval. Saved plans and receipts retain quantity assumptions and references.
+One approval covers the entire recipe basket, not each ingredient separately.
+
+External meal client: add `--kitchen-estimates` to `recipe_client.py` when the
+buyer has enabled this policy. GET /recipe-measures exposes versioned profiles
+and agent eligibility. POST /recipe-plans accepts measurement_mode=strict|kitchen.
+
+Upgrade: stop the server, replace code from this ZIP, keep the catalogue and
+SQLite database, restart with your existing Claude and Valio key settings, and
+create a new recipe plan. No extra dependencies are required.
+
+Validation: 88 offline tests, including all nine previously unresolved screenshot
+items, buyer permission/revocation, whole-basket approval and mock commitment.
+The browser flow was checked with synthetic recipe/model/supplier fixtures.
+No live Claude call was made without your private key, and real mock availability
+can still block an otherwise correctly calculated basket.
+
+Conversion references (stored alongside each applicable rule):
+- NIST Handbook 133 Appendix E: exact weight and US/imperial volume factors.
+  https://www.nist.gov/system/files/documents/2025/12/23/2026_NIST_HB133_AppendixE-20251222.pdf
+- King Arthur Ingredient Weight Chart: ingredient-specific reference weights.
+  https://www.kingarthurbaking.com/learn/ingredient-weight-chart
+- Health Canada CNF 2394: raw garlic clove reference weight.
+  https://food-nutrition.canada.ca/cnf-fce/serving-portion?id=2394
+- USDA SR28, foods 02003 and 02027: dried basil and oregano leaf teaspoon weights.
+  https://www.ars.usda.gov/ARSUserFiles/80400525/Data/SR/SR28/reports/sr28fg02.pdf
+The herb-blend demo proxy has no supplier-density reference and is labelled so.
+
+
+## v0.4.4: diagnose Claude connection failures
+
+The old “Could not reach Claude or parse its response” message hid several
+different failures. Errors now name the stage (research, extraction or matching)
+and distinguish read timeout, connection timeout, DNS/TLS/proxy connection
+failure, other transport failures, non-JSON gateway pages and invalid JSON shape.
+Raw exception text and provider bodies are not printed. Uncertain paid requests
+are not automatically repeated. A read timeout does not establish bad credentials.
+
+Stop the server, replace the code from this ZIP, keep your existing environment
+settings, catalogue and database, then run this in the SAME PowerShell terminal:
+
+```powershell
+python claude_check.py
+```
+
+This sends one short message with a 32-token output limit, consumes a small
+amount of API credit, and prints PASS or a redacted failure. It does not call
+Valio, create a plan or order anything. PASS verifies a completed short model
+request, not web-search/fetch access. To test the recipe research separately:
+
+```powershell
+python claude_check.py --search
+```
+
+The --search test can make multiple model/search/fetch calls, consumes credits
+and can take several minutes; it still does not price products or save orders.
+For a local read timeout, the default wait is now 300 seconds per provider
+request. You can set 30–600 seconds without changing the 20-second connection
+timeout; for example:
+
+```powershell
+$env:ANTHROPIC_READ_TIMEOUT = "600"
+python aimo_api.py
+```
+
+Longer timeouts do not fix blocked connections or provider/network outages.
+The CLI and dashboard now give evidence to distinguish those cases. Tests are
+offline; live API access on your computer remains to be verified.
+75 automated tests pass, including injected network failures and diagnostic use.
+
+## v0.4.3: complete recipes and visible supplied quantities
+
+Claude recipe research now opens the full source page with web_fetch_20250910
+(up to two page fetches per research attempt), instead of accepting source URLs
+from snippets alone. The extractor must explicitly assess ingredient-list
+completeness and name any missing parts. If incomplete, one fresh research and
+extraction attempt is made automatically. If still incomplete, the plan is saved
+as BLOCKED without product matching/pricing; no partial recipe can be committed.
+Older uncommitted recipes without this assessment require a new plan. Full-page
+retrieval and model assessment improve evidence but are not independent recipe
+certification. A fetch failure or missing accessible page may still stop research.
+
+Single explicit metric amounts such as “500 g” are checked against the extracted
+KG/L quantity before scaling. A conflicting “500 KG” is unresolved until corrected;
+complex measures, counts and densities are not guessed. Each basket line displays
+required mass/volume, supplied mass/volume and amount per sales unit. For example,
+SKU 460510 has structured 5 kg per BAG; its “3x” display name does not change the
+actual sales unit into a 15 kg case. 100 BAG would supply 500 kg.
+
+Unavailable meat and expired mock cut-offs still block readiness. Rebuilding
+does not reset the supplier clock or clear sales blocks. Use another eligible
+product/date, or ask mentors for a currently orderable mock scenario.
+Stop the server, replace project code, keep the catalogue/database, restart with
+the same environment settings, and create a NEW meal plan. Old incomplete plans
+cannot be repaired by editing only their visible ingredient quantities.
+69 offline tests pass. Live provider output remains to be checked with your key.
+
+## v0.4.2: recipe validation fix
+
+Fixed a schema formatter bug that removed the actual recipe `title` field when
+stripping JSON Schema annotations. The provider schema now preserves every model
+field, including fields named `title` or `default`, and nested definitions.
+Validation errors identify the failing stage and fields without printing raw
+model output. Stop the server, replace the code from this ZIP, and restart with
+your existing Claude and Valio key settings. Keep your catalogue and database.
+61 offline tests pass, including schema-constrained provider response regression
+tests; no live model request was made without your key.
+
+## Use your Junction Claude API credits (v0.4.1)
+
+The recipe planner now supports Anthropic's native Claude Messages API.
+You do not need an OpenAI key for this path. Redeem the challenge's Claude API
+credits, then create a **Claude Console API key in the credited workspace** at
+https://platform.claude.com/settings/keys. A Claude chat subscription or login
+is not an API key. Never send the secret to anyone or put it in browser code.
+
+Stop the gateway with Ctrl+C, extract this ZIP over the existing project, and
+keep the catalogue and purchase_proposals.sqlite3. In the **SERVER PowerShell
+terminal**, keep your working AIMO_API_KEY set and run:
+
+```powershell
+$env:RECIPE_PROVIDER = "anthropic"
+$env:ANTHROPIC_API_KEY = "PASTE_YOUR_ACTUAL_CLAUDE_API_KEY"
+$env:RECIPE_MODEL = "claude-sonnet-4-6"
+python aimo_api.py
+```
+
+The displayed key string is a placeholder: replace it with your actual secret.
+The model name above is a real supported model ID, not a placeholder.
+If the console requires an explicit workspace for your key, also set
+ANTHROPIC_WORKSPACE_ID to the credited workspace ID. No additional Python SDK
+is required: the adapter uses the existing httpx dependency.
+
+Reconnect to http://127.0.0.1:8000 using the newly printed reviewer token.
+Click **Plan a meal**, enter the recipe request, portions and delivery date,
+then **Find recipe & build basket**. Review the cited recipe and whole basket,
+or choose the existing automatic mode within buyer authority. The external
+`recipe_client.py` works with this same server configuration; it only needs
+an AIMO_AGENT_TOKEN, not the Claude secret.
+
+### Claude implementation and failure handling
+
+- Uses https://api.anthropic.com/v1/messages with the native x-api-key header.
+- Searches with web_search_20250305, with a maximum three searches and three
+  bounded continuation requests per search stage. Only successfully fetched recipe page URLs are eligible as source evidence;
+  a memory-only or snippet-only answer is rejected.
+- Performs recipe extraction and catalogue matching in separate schema-constrained
+  JSON calls using output_config.format. Search citations and strict JSON are
+  deliberately not requested in the same message.
+- Resumes pause_turn responses with their original search content blocks.
+  Refusals, token truncation, tool errors (including HTTP 200 search errors),
+  malformed output and missing sources stop the plan rather than inventing facts.
+- Credential/credit/model/search failures produce redacted setup messages.
+  No API keys are included in browser responses, saved baskets or audit events.
+- All existing unit, quantity, availability, whole-basket budget, fingerprint,
+  approval and fresh-validation checks apply. Mock orders are never submitted.
+
+Each complete meal normally makes three model calls: search/fetch, extraction and SKU matching. An incomplete first source can cause a second research/extraction pair.
+Search pauses may require additional bounded calls. Provider token/search charges
+apply against the account associated with your key; inspect the Claude Console
+for credit coverage and usage. No live Claude request was made during development
+without your private key. All 98 automated tests run offline with synthetic data.
+
+Provider selection: RECIPE_PROVIDER=anthropic (or claude) is explicit. Without
+RECIPE_PROVIDER, an existing ANTHROPIC_API_KEY selects Claude automatically;
+otherwise OpenAI remains the default. Claude defaults to claude-sonnet-4-6,
+with RECIPE_MODEL overriding ANTHROPIC_MODEL. Existing LLM_MODEL/LLM_BASE_URL
+settings are ignored for the Claude recipe adapter. Use
+RECIPE_PROVIDER=openai to retain the original OpenAI recipe path.
+
+The optional older `llm_agent.py` Chat Completions client remains OpenAI-compatible;
+for Claude-backed meal requests, use the dashboard or `recipe_client.py`.
+Run `python -m unittest test_api test_recipe_agent test_claude_recipe` to verify.
+
+Official adapter references:
+https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
+https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+https://platform.claude.com/docs/en/api/overview
+
+
 ## Recipe requests (v0.4)
 
 Use **Plan a meal** to enter a request such as “Spaghetti bolognese for 200 people”.
@@ -9,7 +635,7 @@ the web for a published recipe, extracts its source yield and ingredients,
 scales the quantities in Python and matches ingredients to catalogue products.
 Fixed mock prices and availability produce ONE combined basket.
 
-### Configure recipe AI in the SERVER PowerShell terminal
+### Alternative: configure OpenAI recipe AI in the SERVER PowerShell terminal
 
 Stop the gateway with Ctrl+C. Keep AIMO_API_KEY set to the working Valio mock key.
 Add a separate model-provider key and a Responses model that supports both web

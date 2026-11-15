@@ -16,7 +16,7 @@ class GatewayTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {
-            "AIMO_AGENT_TOKEN": "agent-test", "AIMO_REVIEWER_TOKEN": "reviewer-test",
+            "AIMO_RECIPE_CACHE":"0", "AIMO_AGENT_TOKEN": "agent-test", "AIMO_REVIEWER_TOKEN": "reviewer-test",
             "AIMO_API_KEY": "mock-upstream-test", "AIMO_DB": str(Path(self.temp.name) / "test.sqlite3"),
             "AIMO_CUSTOMER": "123", "AIMO_APPROVAL_LIMIT": "1200", "AIMO_REVIEWER_NAME": "Test reviewer"})
         self.env.start()
@@ -74,7 +74,7 @@ class GatewayTests(unittest.TestCase):
 
     def test_dashboard_and_role(self):
         self.assertEqual(self.client.get("/").status_code, 200)
-        self.assertIn("Purchase reviews", self.client.get("/").text)
+        self.assertIn("Kitchen purchasing", self.client.get("/").text)
         self.assertEqual(self.client.get("/assets/app.js").status_code, 200)
         self.assertEqual(self.client.get("/session", headers=self.agent).json()["role"], "agent")
         self.assertEqual(self.client.get("/session", headers=self.reviewer).json()["role"], "reviewer")

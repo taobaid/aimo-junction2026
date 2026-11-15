@@ -1,79 +1,70 @@
-# Challenge coverage — Trusted Trade Agents
+# Challenge coverage — Trusted Trade Agents, v0.15
 
-## Core: implemented prototype paths
+## Core requirements
 
-| Challenge requirement | Where it is implemented | What to show |
+| Requirement | Implemented path | Demonstration |
 | --- | --- | --- |
-| Structured product lookup | `GET /products`, catalogue-wide names, claims, labels, origins, sales units | External client searches the supplied catalogue |
-| Fixed price and availability | `POST /offers`; calls the supplied price/availability endpoints only for a shortlist | Candidate prices, basket costs, dates, cut-offs, blocked options and explicit unknown stock |
-| Inquiry to commitment | Server-stored offer → exact proposal → autonomous authorisation or human decision → fresh validation → local mock order and receipt | Show `POST /orders` and its COMMITTED_MOCK receipt; retries return the same receipt. No supplier submission. |
-| Autonomous decisions within authority | `AUTO_AUTHORISED`, recorded automatically when an eligible basket is within the configured per-proposal spending limit | A smaller milk request authorises and commits through the reference client without a human click |
-| Human approval beyond authority | `PENDING`, separate reviewer credential, exact basket fingerprint, immutable snapshot and decision event | A larger milk request, reviewed in the dashboard |
-| Open interface | OpenAPI 3.1 contract and JSON Schema request/response models; generated `/openapi.json` | Another client can call the gateway without the dashboard |
-| External purchasing agent | Deterministic reference client and optional LLM function-tool client | Run the client in a separate process; reviewer token is unavailable to it |
-| Synthetic scope | Supplied product JSON and mock price/availability API; no webshop or order-submission call | Explain the production boundary |
+| Structured product lookup | GET /products, catalogue-wide names, recorded claims and origin, sales units | External client or Find products searches the catalogue. |
+| Fixed price and availability | POST /offers, supplied mock price/availability for a shortlist | Tax-inclusive basket subtotals, cut-offs, delivery date and unknown-stock disclosure. |
+| Inquiry to commitment | Offer, exact proposal, authority/approval, fresh validation, POST /orders or recipe confirmation | Local mock receipt, idempotent commitment, no supplier submission. |
+| Agent authority and human approval | Separate agent/reviewer credentials, configured spending cap, fingerprint-bound decisions | Small eligible product basket can commit within authority; larger basket requires spending approval. |
+| Open interface | OpenAPI and structured request/response models | External Python agent works independently of the dashboard. |
 
-The prototype handles **single-product basket alternatives**, not a mixed menu
-or multi-line order optimisation problem. Litres/kilograms require recorded unit
-conversions; sales-unit requests work without guessing physical quantity.
+Aimo staff confirmed that the challenge has no supplier order API and producing
+orders for human approval is sufficient. Commitments here create local mock
+receipts. Delivery fees/deposits are excluded from product subtotals.
 
-## Insight: what is covered and what remains optional
+## Partial purchases
 
-| Topic | Current implementation | Limit |
-| --- | --- | --- |
-| Trust protocol | Authenticated gateway, HTTPS upstream, typed data, timestamp/validity/source evidence, exact snapshot fingerprint | Catalogue origin and labels are claims; no independently verified credentials or supplier digital signatures. A fingerprint is not proof of truth. |
-| Guardrails | Server-side price, quantity, delivery/cut-off, sales-block, spend, recorded claims/origin and role checks | One configured buyer and local credentials; no SSO or cumulative budget accounting |
-| Response logic | Cheapest eligible full-quantity single-SKU basket, exclusions and reasons; unknown stock is disclosed and orderable under mentor rules | No partial-basket splitting, recipe substitutions or good/better/best scoring |
-| Audit trail | Saved price/stock evidence, selected basket, selection reason, fingerprint, time, actor and approval decision | Local SQLite; not an externally anchored tamper-proof log |
-| Delivery comparison | Requested/available dates and cut-offs are checked | Reliability CSV is not yet integrated |
-| Sustainability | Existing catalogue label codes are exposed | No verified certificate interpretation, carbon ranking or carbon-footprint dataset integration |
+Any blocked dish with checked products can prepare a partial purchase. The buyer
+reviews all excluded ingredients and the remaining subtotal before confirmation.
+Excluded ingredients remain not supplied, and the receipt explicitly states that
+it is not a complete recipe basket. This does not waive checks on included items.
+The saved-recipe action makes no Claude calls. See PARTIAL_PURCHASES.md.
 
-The recipe, last-minute event, proactive selling, allergen-safe substitution and
-standing-order scenarios in the brief are inspiration, not additional core
-requirements. Do not claim them as working features. A lactose-free claim is not
-evidence that milk allergens are absent. Missing information must not be treated
-as compliance.
+## Additional implemented features
 
-## Suggested judging demo
+- General meal request to a combined ingredient basket, with deterministic scaling,
+  unit conversions, catalogue identity matching and combined-stock allocation.
+- Fast AI recipe drafts for review, optional published recipe research, exact
+  recipe URL ingestion and buyer-pasted complete recipes.
+- Targeted compatible substitutions and broader same-ingredient alternatives.
+  Supported nonessential flavour omissions offer whole-basket Yes/No approval.
+- Mandatory recorded claims/origin and stock/delivery/quantity checks remain hard
+  constraints. An approval cannot override them.
+- UI and voice share the API. Typed jobs support polling, idempotency and refresh
+  recovery. Voice remains review-only. Quick drafts always require human review.
+- Evidence, source provenance, fingerprints, timestamps, decision history and
+  downloadable baskets/mock receipts support a human-readable audit trail.
+- Key-free, clearly labelled offline sample mode for repeatable laptop testing.
+  Live mode uses the tester's own authorised credentials and official catalogue.
 
-1. **External agent:** Give the optional LLM client the 1000-litre milk request,
-   or use the deterministic client for a model-free fallback. Show its policy,
-   search, offer and proposal tool calls.
-2. **Comparison:** Show why the lowest nominal price was excluded if its cut-off
-   is passed, and why stock-marker values mean unknown/orderable rather than
-   confirmed inventory.
-3. **Human control:** A EUR 1770 product subtotal exceeds EUR 1200 authority.
-   Review and approve the exact saved proposal using a separate reviewer token.
-4. **Autonomy:** Repeat with 100 litres, assuming current eligible prices remain
-   below the configured limit. Show AUTO_AUTHORISED and the audit event without
-   a human click.
-5. **Boundary:** Attempt approval using an agent token; it receives HTTP 403.
-   Commit the approved mock order, download its receipt and retry the same proposal to show the same receipt ID. Point out no supplier order is sent.
+## Limits and optional directions
 
-Use current responses rather than hard-coded result claims. Offers and
-proposals have local 30-minute review windows, not stock reservations. Mock
-cut-offs stay fixed over the event, so a candidate can legitimately become
-blocked. Live provider/model integration still needs to be tested with your own
-credentials. The automated suite uses synthetic fixtures and a mocked model.
+| Topic | Current boundary |
+| --- | --- |
+| Trust | Typed evidence, freshness and exact snapshots. Origin/labels remain supplier catalogue claims, not independently signed credentials. |
+| Identity and budget | One buyer and local agent/reviewer tokens. No production SSO, cumulative budgets or independently authenticated human identity. |
+| Delivery | Date/cut-off eligibility checks. No historical reliability ranking. |
+| Sustainability | Catalogue labels can be exposed. No certified carbon ranking or footprint dataset integration. |
+| Allergens | Recorded mandatory claims and review caveats help constrain selection. No certified allergen safety or clinical nutrition engine. |
+| Inventory | Kitchen inventory deduction is not implemented. Proposed tap-water supply needs approval. |
+| Proactive / standing orders | No proactive selling or recurring order drift detection. These are optional scenarios. |
+| Arbitrary recipes | Live quality, catalogue coverage and latency vary. Offline fixtures do not prove any dish will complete quickly. |
 
+## Verification
 
-## Mock order boundary
+184 offline tests pass, including native Claude HTTP contracts, varied-dish
+fixtures, quantity/stock/approval checks, deadline partials, job idempotency,
+buyer isolation and a key-free demo process with real gateway routes.
+Browser QA covers purchasing flows, job refresh recovery and sample-mode startup.
+No paid/live model or supplier calls were made in this verification environment.
 
-Version 0.3 adds an explicit local commitment endpoint to make core task two
-visible end to end. The mentors do not require a supplier submission; the
-simulated receipt is clearly labelled MOCK_ONLY/COMMITTED_MOCK. A pending
-proposal cannot be committed by the agent, fresh validation failures stop the
-commitment, and a unique proposal-to-order record prevents duplicate retries.
-This is not evidence of production integration or real delivery acceptance.
+## Judging walkthrough
 
-
-## Recipe planning extension
-
-POST /recipe-plans accepts a meal request, target portions, delivery date and
-buyer-controlled autonomy. A Responses web-search model finds a cited recipe;
-structured extraction and catalogue-only semantic matching feed deterministic
-scaling, whole-pack calculation, live mock pricing/availability and combined
-spend decisions. One reviewer decision covers the entire recipe and basket.
-Unresolved required ingredients block partial commitment. Changes require a new
-plan and refreshed review. Receipts remain MOCK_ONLY, with no upstream submission.
-See README for required separate model credentials and prototype limitations.
+1. Start the offline demo using LAPTOP_SETUP.md, or your configured live gateway.
+2. Show the 10 L milk mock receipt as the within-authority path.
+3. Show 1,000 L milk at EUR 1,770 above EUR 1,200 authority. Record a reviewer
+   spending decision and recheck before mock commitment.
+4. Show the bolognese omission choice and its exact-basket confirmation.
+5. Open the audit evidence and /docs. Explain how another agent calls the same API.
